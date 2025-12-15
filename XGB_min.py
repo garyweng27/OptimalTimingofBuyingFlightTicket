@@ -79,10 +79,7 @@ model = XGBRegressor(
 
 model.fit(X_train, y_train)
 
-
-# =========================================
-# 6. Evaluation
-# =========================================
+# ====================================== Evaluation ======================================
 y_pred_log = model.predict(X_test)
 y_pred = np.expm1(y_pred_log)
 y_test_original = np.expm1(y_test)
@@ -93,15 +90,8 @@ mae = mean_absolute_error(y_test_original, y_pred)
 print("RMSE (original scale):", rmse)
 print("MAE (original scale):", mae)
 
-# =========================================
-# 7. Model-based expected minimum price
-# =========================================
+# ============================= Model-based expected minimum price =============================
 def predict_expected_min_price(model, base_features, max_days_left):
-    """
-    Scan days_left from max_days_left to 0 and find
-    the model-based expected minimum price.
-    """
-
     rows = []
     for d in range(max_days_left, -1, -1):
         r = base_features.copy()
@@ -126,17 +116,10 @@ def predict_expected_min_price(model, base_features, max_days_left):
     )
 
 def evaluate_policy(df, model, feature_cols, min_days=20, agg_price="mean"):
-    """
-    Evaluate "buying day recommendation" policy.
-    Requires df to contain encoded features already (same as training),
-    and original-scale price in df["price"].
-    """
-
     results = []
     grouped = df.groupby(["airline", "flight", "route"], sort=False)
 
     for key, g in grouped:
-        # 1) collapse duplicates: one price per days_left
         if agg_price == "mean":
             price_curve = g.groupby("days_left")["price"].mean()
         elif agg_price == "min":
@@ -147,11 +130,7 @@ def evaluate_policy(df, model, feature_cols, min_days=20, agg_price="mean"):
         if price_curve.index.nunique() < min_days:
             continue
 
-        # Use max observed days_left as the current window start
         max_day = int(price_curve.index.max())
-
-        # 2) fixed base features (take any row; features are same within group by design)
-        #    safer: take the row with max_day (current day)
         g_max = g[g["days_left"] == max_day].iloc[0]
 
         base = {
@@ -164,7 +143,6 @@ def evaluate_policy(df, model, feature_cols, min_days=20, agg_price="mean"):
             "stop_count": g_max["stop_count"],
         }
 
-        # 3) model scan
         rows = []
         for d in range(max_day, -1, -1):
             r = base.copy()
@@ -172,14 +150,11 @@ def evaluate_policy(df, model, feature_cols, min_days=20, agg_price="mean"):
             rows.append(r)
 
         X_scan = pd.DataFrame(rows)[feature_cols]
-        pred_prices = np.expm1(model.predict(X_scan))  # back to original scale
+        pred_prices = np.expm1(model.predict(X_scan))
         d_pred = int(rows[int(np.argmin(pred_prices))]["days_left"])
 
-        # 4) "true" best day and regret computed from observed price curve
         d_true = int(price_curve.idxmin())
         p_true_min = float(price_curve.min())
-
-        # If the dataset doesn't contain that d_pred day for this flight, skip
         if d_pred not in price_curve.index:
             continue
 
@@ -202,14 +177,9 @@ def evaluate_policy(df, model, feature_cols, min_days=20, agg_price="mean"):
 
     return pd.DataFrame(results)
 
-
-
-# =========================================
-# 8. Example usage (SAFE: sample from dataset)
-# =========================================
+# ========================== Example usage (SAFE: sample from dataset) ==========================
 if __name__ == "__main__":
 
-    # randomly pick a valid example from dataset
     sample = df.sample(1, random_state=42).iloc[0]
 
     base_features = {
